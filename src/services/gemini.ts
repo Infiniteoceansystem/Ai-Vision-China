@@ -1,0 +1,324 @@
+import { GoogleGenAI } from "@google/genai";
+
+async function getBase64FromUrl(url: string): Promise<string> {
+  if (url.startsWith('data:')) return url;
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlobUrl(base64: string): string {
+  const arr = base64.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  const blob = new Blob([u8arr], { type: mime });
+  return URL.createObjectURL(blob);
+}
+
+async function compressImage(base64Str: string, maxWidth: number = 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxWidth) {
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxWidth) / height);
+          height = maxWidth;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(base64Str);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = reject;
+    img.src = base64Str;
+  });
+}
+
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 5,
+  baseDelayMs: number = 3000
+): Promise<T> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      attempt++;
+      console.error(`Attempt ${attempt} failed:`, error);
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error("Unreachable");
+}
+
+export async function generateMultipleImages(prompts: string[], clothingImage?: string, styleImage?: string, baseSeed?: number): Promise<string[]> {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API key is missing");
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  let clothingBase64 = clothingImage ? await getBase64FromUrl(clothingImage) : null;
+  let styleBase64 = styleImage ? await getBase64FromUrl(styleImage) : null;
+
+  if (clothingBase64) clothingBase64 = await compressImage(clothingBase64);
+  if (styleBase64) styleBase64 = await compressImage(styleBase64);
+
+  const tasks = prompts.map((prompt, index) => {
+    const parts: any[] = [];
+    
+    if (styleBase64) {
+      const match = styleBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          inlineData: {
+            data: match[2],
+            mimeType: match[1],
+          },
+        });
+        parts.push({ text: "【意向风格参考图】请严格模仿这张图片的姿势、风格、光影和整体氛围。" });
+      }
+    }
+
+    if (clothingBase64) {
+      const match = clothingBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          inlineData: {
+            data: match[2],
+            mimeType: match[1],
+          },
+        });
+        parts.push({ text: "【服装参考图】请让人物穿上这件衣服。" });
+      }
+    }
+    
+    parts.push({ text: prompt });
+
+    return async () => {
+      try {
+        const config: any = {
+          imageConfig: {
+            aspectRatio: "9:16",
+            imageSize: "4K"
+          },
+          tools: [
+            {
+              googleSearch: {
+                searchTypes: {
+                  webSearch: {},
+                  imageSearch: {},
+                }
+              },
+            },
+          ],
+        };
+
+        if (baseSeed !== undefined) {
+          config.seed = baseSeed;
+        }
+
+        const response = await withRetry(() => ai.models.generateContent({
+          model: 'gemini-3.1-flash-image-preview',
+          contents: { parts },
+          config,
+        }));
+        
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData) {
+            const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            return base64ToBlobUrl(base64);
+          }
+        }
+        return null;
+      } catch (e) {
+        console.error("Image generation error:", e);
+        return null;
+      }
+    };
+  });
+
+  // Process all tasks concurrently for maximum speed as requested
+  const results = await Promise.all(tasks.map(task => task()));
+  
+  const validResults = results.filter(Boolean) as string[];
+  if (validResults.length === 0) throw new Error("No images generated");
+  return validResults;
+}
+
+export async function generateHighEndPrompt(
+  imageUrl: string,
+  category: string
+): Promise<string> {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API key is missing");
+
+  const ai = new GoogleGenAI({ apiKey });
+  let imageBase64 = await getBase64FromUrl(imageUrl);
+  
+  // Compress the image before sending to the text model to prevent 503 Deadline Exceeded
+  imageBase64 = await compressImage(imageBase64, 1024);
+
+  const match = imageBase64.match(/^data:(.*?);base64,(.+)$/);
+  if (!match) throw new Error("Invalid image format");
+
+  const promptText = `请深度分析这张图片，并为 "${category}" 风格生成专业的高级 AI 提示词。
+请基于这张具体的图片，提供两种类型的提示词（请全部使用中文输出）：
+
+1. 图像生成提示词 (Text-to-Image)：极其详细，重点描述图片中具体的人物特征、服装、光影、构图、相机视角、氛围和材质。
+2. 视频动态提示词 (Image-to-Video)：重点描述这张图片中的人物应该如何动起来。描述相机的运动（例如：缓慢平移、电影级跟随），人物的动作（例如：头发在风中飘动、模特转身、轻微的呼吸、向前走），以及环境的动态（例如：光影变化、落叶、布料飘动）。
+
+请严格按照以下格式输出（全部使用中文）：
+
+### 🎨 图像生成提示词
+(在这里填写中文图像提示词)
+
+---
+
+### 🎬 视频动态提示词
+(在这里填写中文视频提示词)`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.1-pro-preview',
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: match[2],
+            mimeType: match[1],
+          }
+        },
+        { text: promptText }
+      ]
+    }
+  });
+
+  return response.text || "生成失败，请重试。";
+}
+
+export async function editImage(imageUrl: string, prompt: string, referenceImage?: string): Promise<string> {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API key is missing");
+
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const parts: any[] = [];
+  
+  const base64Image = await getBase64FromUrl(imageUrl);
+  const match = base64Image.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+  if (!match) throw new Error("Invalid image format");
+  parts.push({
+    inlineData: {
+      data: match[2],
+      mimeType: match[1],
+    },
+  });
+
+  if (referenceImage) {
+    const refBase64 = await getBase64FromUrl(referenceImage);
+    const refMatch = refBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+    if (refMatch) {
+      parts.push({
+        inlineData: {
+          data: refMatch[2],
+          mimeType: refMatch[1],
+        },
+      });
+    }
+  }
+
+  parts.push({ text: prompt });
+
+  const response = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-3.1-flash-image-preview',
+    contents: { parts },
+    config: {
+      imageConfig: {
+        imageSize: "4K"
+      }
+    }
+  }));
+
+  for (const part of response.candidates?.[0]?.content?.parts || []) {
+    if (part.inlineData) {
+      const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      return base64ToBlobUrl(base64);
+    }
+  }
+  throw new Error("No image generated");
+}
+
+export async function generateCopywriting(image: string | null, context: string, platform: string): Promise<string> {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API key is missing");
+
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const parts: any[] = [];
+  if (image) {
+    const base64Image = await getBase64FromUrl(image);
+    const match = base64Image.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+    if (match) {
+      parts.push({
+        inlineData: {
+          data: match[2],
+          mimeType: match[1],
+        },
+      });
+    }
+  }
+  
+  let platformPrompt = "";
+  switch (platform) {
+    case "小红书":
+      platformPrompt = "小红书风格的爆款文案。要求：\n1. 标题吸引人（带emoji，让人有点击欲望）\n2. 正文分段清晰，语气活泼、真实、种草（可以使用“绝绝子”、“姐妹们”等词汇，但不要过度）\n3. 突出亮点和细节\n4. 最后带上相关的热门话题标签（#标签）。";
+      break;
+    case "抖音":
+      platformPrompt = "抖音短视频/图文风格的文案。要求：\n1. 开头要有强烈的悬念或痛点共鸣，抓住眼球（前3秒黄金法则）\n2. 语言口语化、接地气、有节奏感\n3. 引导互动（如“评论区告诉我”、“点赞收藏”）\n4. 包含热门标签。";
+      break;
+    case "独立站":
+      platformPrompt = "品牌独立站（DTC）风格的文案。要求：\n1. 语气高级、优雅、专业，体现品牌调性与质感\n2. 强调设计理念、材质工艺或独特的生活方式\n3. 结构严谨，适合作为商品详情页的描述或品牌故事\n4. 结尾带有清晰的行动号召（Call to Action）。";
+      break;
+    case "电商":
+      platformPrompt = "传统电商（如淘宝/天猫/京东）风格的带货文案。要求：\n1. 核心卖点前置，直击消费者需求\n2. 强调性价比、促销信息或实用功能\n3. 语言极具煽动性和紧迫感（如“限时特惠”、“手慢无”）\n4. 条理清晰，方便快速阅读。";
+      break;
+    default:
+      platformPrompt = "适合该图片的优质文案。";
+  }
+
+  parts.push({ text: `请根据这张图片（如果有）和以下上下文，生成一段${platformPrompt}\n\n上下文：${context}` });
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.1-pro-preview',
+    contents: { parts },
+  });
+
+  return response.text || "";
+}
