@@ -79,47 +79,49 @@ async function withRetry<T>(
   throw new Error("Unreachable");
 }
 
-export async function generateMultipleImages(prompts: string[], clothingImage?: string, styleImage?: string, baseSeed?: number): Promise<string[]> {
+export async function generateMultipleImages(
+  prompts: string[], 
+  references: { clothing?: string, style?: string, model?: string, logo?: string } = {}, 
+  baseSeed?: number
+): Promise<string[]> {
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API key is missing");
 
   const ai = new GoogleGenAI({ apiKey });
 
-  let clothingBase64 = clothingImage ? await getBase64FromUrl(clothingImage) : null;
-  let styleBase64 = styleImage ? await getBase64FromUrl(styleImage) : null;
+  let clothingBase64 = references.clothing ? await getBase64FromUrl(references.clothing) : null;
+  let styleBase64 = references.style ? await getBase64FromUrl(references.style) : null;
+  let modelBase64 = references.model ? await getBase64FromUrl(references.model) : null;
+  let logoBase64 = references.logo ? await getBase64FromUrl(references.logo) : null;
 
   if (clothingBase64) clothingBase64 = await compressImage(clothingBase64);
   if (styleBase64) styleBase64 = await compressImage(styleBase64);
+  if (modelBase64) modelBase64 = await compressImage(modelBase64);
+  if (logoBase64) logoBase64 = await compressImage(logoBase64);
 
   const tasks = prompts.map((prompt, index) => {
     const parts: any[] = [];
     
-    if (styleBase64) {
-      const match = styleBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-      if (match) {
-        parts.push({
-          inlineData: {
-            data: match[2],
-            mimeType: match[1],
-          },
-        });
-        parts.push({ text: "【意向风格参考图】请严格模仿这张图片的姿势、风格、光影和整体氛围。" });
+    const addPart = (base64: string | null, instruction: string) => {
+      if (base64) {
+        const match = base64.match(/^data:(.*?);base64,(.+)$/);
+        if (match) {
+          parts.push({
+            inlineData: {
+              data: match[2],
+              mimeType: match[1],
+            },
+          });
+          parts.push({ text: instruction });
+        }
       }
-    }
+    };
 
-    if (clothingBase64) {
-      const match = clothingBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-      if (match) {
-        parts.push({
-          inlineData: {
-            data: match[2],
-            mimeType: match[1],
-          },
-        });
-        parts.push({ text: "【服装参考图】请让人物穿上这件衣服。" });
-      }
-    }
-    
+    addPart(styleBase64, "【意向风格参考图】请严格模仿这张图片的姿势、风格、光影和整体氛围。");
+    addPart(clothingBase64, "【服装参考图】请让人物穿上这件衣服。");
+    addPart(modelBase64, "【模特参考图】请严格参考这张图片中人物的脸型、五官和气质。");
+    addPart(logoBase64, "【商标细节图】请严格参考这张图片中的Logo、图案和细节，确保在生成的服装上准确无误地还原。");
+
     parts.push({ text: prompt });
 
     return async () => {
@@ -189,21 +191,15 @@ export async function generateHighEndPrompt(
   const match = imageBase64.match(/^data:(.*?);base64,(.+)$/);
   if (!match) throw new Error("Invalid image format");
 
-  const promptText = `请深度分析这张图片，并为 "${category}" 风格生成专业的高级 AI 提示词。
-请基于这张具体的图片，提供两种类型的提示词（请全部使用中文输出）：
+  const promptText = `请深度分析这张图片，并为 "${category}" 风格生成专业的高级 AI 视频动态提示词。
+请基于这张具体的图片，提供一段提示词（请全部使用中文输出，并且只输出一段话，不需要多复杂）：
 
-1. 图像生成提示词 (Text-to-Image)：极其详细，重点描述图片中具体的人物特征、服装、光影、构图、相机视角、氛围和材质。
-2. 视频动态提示词 (Image-to-Video)：重点描述这张图片中的人物应该如何动起来。描述相机的运动（例如：缓慢平移、电影级跟随），人物的动作（例如：头发在风中飘动、模特转身、轻微的呼吸、向前走），以及环境的动态（例如：光影变化、落叶、布料飘动）。
+视频动态提示词 (Image-to-Video)：重点描述这张图片中的人物应该如何动起来。描述相机的运动，人物的动作（例如：头发在风中飘动、轻微的呼吸、向前走），以及环境的动态。注意：不要产生转身之类的容易有破绽的动作。
 
 请严格按照以下格式输出（全部使用中文）：
 
-### 🎨 图像生成提示词
-(在这里填写中文图像提示词)
-
----
-
 ### 🎬 视频动态提示词
-(在这里填写中文视频提示词)`;
+(在这里填写中文视频提示词，一段话)`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3.1-pro-preview',
@@ -231,8 +227,9 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
   
   const parts: any[] = [];
   
-  const base64Image = await getBase64FromUrl(imageUrl);
-  const match = base64Image.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+  let base64Image = await getBase64FromUrl(imageUrl);
+  base64Image = await compressImage(base64Image, 1024); // Compress to prevent 503 errors
+  const match = base64Image.match(/^data:(.*?);base64,(.+)$/);
   if (!match) throw new Error("Invalid image format");
   parts.push({
     inlineData: {
@@ -242,8 +239,9 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
   });
 
   if (referenceImage) {
-    const refBase64 = await getBase64FromUrl(referenceImage);
-    const refMatch = refBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+    let refBase64 = await getBase64FromUrl(referenceImage);
+    refBase64 = await compressImage(refBase64, 1024);
+    const refMatch = refBase64.match(/^data:(.*?);base64,(.+)$/);
     if (refMatch) {
       parts.push({
         inlineData: {

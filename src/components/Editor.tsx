@@ -33,12 +33,15 @@ export default function Editor() {
   const [loadingMessage, setLoadingMessage] = useState("");
   const workspaceRef = useRef<HTMLDivElement>(null);
 
-  const handleGenerate = async (prompts: string[], clothingImage?: string, styleImage?: string, seed?: number) => {
+  const [isCharacterExpanded, setIsCharacterExpanded] = useState(true);
+
+  const handleGenerate = async (prompts: string[], references?: any, seed?: number) => {
     setIsLoading(true);
+    setIsCharacterExpanded(false); // Shrink panel when generating
     setLoadingMessage("正在使用网络搜索生成图像...");
     try {
-      const imgs = await generateMultipleImages(prompts, clothingImage, styleImage, seed);
-      setGeneratedImages(imgs);
+      const imgs = await generateMultipleImages(prompts, references, seed);
+      setGeneratedImages(prev => [...prev, ...imgs]);
       setCurrentImage(imgs[0]);
       setTexts([]); // Clear texts on new image
     } catch (error) {
@@ -55,6 +58,7 @@ export default function Editor() {
     setLoadingMessage("正在应用 AI 编辑...");
     try {
       const img = await editImage(currentImage, prompt, referenceImage);
+      setGeneratedImages(prev => [...prev, img]);
       setCurrentImage(img);
     } catch (error) {
       console.error(error);
@@ -70,6 +74,7 @@ export default function Editor() {
     setLoadingMessage("正在翻转图像...");
     try {
       const img = await flipImage(currentImage, horizontal, vertical);
+      setGeneratedImages(prev => [...prev, img]);
       setCurrentImage(img);
     } catch (error) {
       console.error(error);
@@ -105,7 +110,7 @@ export default function Editor() {
     };
     setTexts([...texts, newText]);
     setSelectedTextId(newText.id);
-    setActiveTool("text");
+    setActiveTool("edit");
   };
 
   const handleUpdateText = (id: string, updates: Partial<TextOverlay>) => {
@@ -134,7 +139,7 @@ export default function Editor() {
     try {
       const prompt = await generateHighEndPrompt(currentImage, promptCategory);
       setGeneratedPrompt(prompt);
-      setActiveTool("prompt");
+      setActiveTool("edit");
     } catch (error: any) {
       console.error(error);
       alert(error.message || "提示词生成失败，请重试。");
@@ -177,6 +182,7 @@ export default function Editor() {
     setLoadingMessage("正在生成拼图...");
     try {
       const collage = await createCollage(selectedImages, type);
+      setGeneratedImages(prev => [...prev, collage]);
       setCurrentImage(collage);
       setActiveTool("edit"); // Switch to edit mode after collage
     } catch (error) {
@@ -187,11 +193,14 @@ export default function Editor() {
     }
   };
 
+  // Hide main when character panel is expanded
+  const shouldHideMain = activeTool === "character" && isCharacterExpanded && !isLoading;
+
   return (
     <div className="flex h-screen bg-[#fafaf9] text-stone-900 font-sans overflow-hidden">
       <Sidebar activeTool={activeTool} setActiveTool={setActiveTool} />
 
-      <main className="flex-1 flex flex-col relative">
+      <main className={`flex-1 flex flex-col relative transition-all duration-500 ${shouldHideMain ? 'hidden' : 'flex'}`}>
         <header className="h-16 border-b border-stone-200 flex items-center justify-between px-8 bg-white/80 backdrop-blur-md z-10">
           <h2 className="font-serif text-lg font-medium text-stone-800 tracking-wide">
             工作区
@@ -208,8 +217,9 @@ export default function Editor() {
                   if (file) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                      setCurrentImage(e.target?.result as string);
-                      setGeneratedImages([]);
+                      const result = e.target?.result as string;
+                      setCurrentImage(result);
+                      setGeneratedImages(prev => [...prev, result]);
                       setTexts([]);
                     };
                     reader.readAsDataURL(file);
@@ -234,7 +244,7 @@ export default function Editor() {
             )}
             <button
               onClick={() => {
-                setActiveTool("prompt");
+                setActiveTool("edit");
               }}
               disabled={!currentImage}
               className="px-5 py-2 bg-indigo-50 text-indigo-600 text-sm font-medium rounded-full hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center gap-2"
@@ -263,12 +273,12 @@ export default function Editor() {
           />
 
           {generatedImages.length > 1 && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 bg-white/90 p-3 rounded-2xl backdrop-blur-md border border-stone-200 shadow-xl">
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 bg-white/90 p-3 rounded-2xl backdrop-blur-md border border-stone-200 shadow-xl max-w-[80%] overflow-x-auto custom-scrollbar">
               {generatedImages.map((img, idx) => (
                 <button
                   key={idx}
                   onClick={() => setCurrentImage(img)}
-                  className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ${currentImage === img ? 'border-stone-900 scale-110 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ${currentImage === img ? 'border-stone-900 scale-110 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
                 >
                   <img src={img} alt={`Generated ${idx + 1}`} className="w-full h-full object-cover" />
                 </button>
@@ -318,6 +328,9 @@ export default function Editor() {
         generatedPrompt={generatedPrompt}
         isPromptLoading={isPromptLoading}
         onGeneratePrompt={handleGeneratePrompt}
+        isLoading={isLoading}
+        isCharacterExpanded={isCharacterExpanded}
+        setIsCharacterExpanded={setIsCharacterExpanded}
       />
     </div>
   );

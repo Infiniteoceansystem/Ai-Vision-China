@@ -11,9 +11,6 @@ export default function Sidebar({ activeTool, setActiveTool }: SidebarProps) {
     { id: "tryon", icon: Shirt, label: "AI 换装" },
     { id: "character", icon: UserSquare, label: "人物与小红书" },
     { id: "edit", icon: Wand2, label: "AI 编辑" },
-    { id: "text", icon: Type, label: "文案与叠加" },
-    { id: "collage", icon: LayoutGrid, label: "拼图" },
-    { id: "prompt", icon: FileText, label: "高级提示词" },
   ];
 
   return (
