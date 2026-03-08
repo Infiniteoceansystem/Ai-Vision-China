@@ -202,7 +202,7 @@ export async function generateHighEndPrompt(
 (在这里填写中文视频提示词，一段话)`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: {
       parts: [
         {
@@ -314,7 +314,7 @@ export async function generateCopywriting(image: string | null, context: string,
   parts.push({ text: `请根据这张图片（如果有）和以下上下文，生成一段${platformPrompt}\n\n上下文：${context}` });
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: { parts },
   });
 
