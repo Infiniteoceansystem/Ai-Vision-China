@@ -94,14 +94,17 @@ export async function generateMultipleImages(
   let modelBase64 = references.model ? await getBase64FromUrl(references.model) : null;
   let logoBase64 = references.logo ? await getBase64FromUrl(references.logo) : null;
 
-  if (clothingBase64) clothingBase64 = await compressImage(clothingBase64);
-  if (styleBase64) styleBase64 = await compressImage(styleBase64);
-  if (modelBase64) modelBase64 = await compressImage(modelBase64);
-  if (logoBase64) logoBase64 = await compressImage(logoBase64);
+  if (clothingBase64) clothingBase64 = await compressImage(clothingBase64, 512);
+  if (styleBase64) styleBase64 = await compressImage(styleBase64, 512);
+  if (modelBase64) modelBase64 = await compressImage(modelBase64, 512);
+  if (logoBase64) logoBase64 = await compressImage(logoBase64, 512);
 
   const tasks = prompts.map((prompt, index) => {
     const parts: any[] = [];
     
+    const imageInstructions: string[] = [];
+    let imageIndex = 1;
+
     const addPart = (base64: string | null, instruction: string) => {
       if (base64) {
         const match = base64.match(/^data:(.*?);base64,(.+)$/);
@@ -112,17 +115,22 @@ export async function generateMultipleImages(
               mimeType: match[1],
             },
           });
-          parts.push({ text: instruction });
+          imageInstructions.push(`Image ${imageIndex}: ${instruction}`);
+          imageIndex++;
         }
       }
     };
 
-    addPart(styleBase64, "【意向风格参考图】请严格模仿这张图片的姿势、风格、光影和整体氛围。");
-    addPart(clothingBase64, "【服装参考图】请让人物穿上这件衣服。");
-    addPart(modelBase64, "【模特参考图】请严格参考这张图片中人物的脸型、五官和气质。");
-    addPart(logoBase64, "【商标细节图】请严格参考这张图片中的Logo、图案和细节，确保在生成的服装上准确无误地还原。");
+    addPart(styleBase64, "Style reference (imitate pose, lighting, and atmosphere).");
+    addPart(clothingBase64, "Clothing reference (character must wear this).");
+    addPart(modelBase64, "Model reference (use this face and body type).");
+    addPart(logoBase64, "Logo/Detail reference (include this exactly on the clothing).");
 
-    parts.push({ text: prompt });
+    const finalPrompt = imageInstructions.length > 0 
+      ? `Generate an image based on these references:\n${imageInstructions.join('\n')}\n\nPrompt: ${prompt}`
+      : prompt;
+
+    parts.push({ text: finalPrompt });
 
     return async () => {
       try {
@@ -131,21 +139,13 @@ export async function generateMultipleImages(
             aspectRatio: "9:16",
             imageSize: "4K"
           },
-          tools: [
-            {
-              googleSearch: {
-                searchTypes: {
-                  webSearch: {},
-                  imageSearch: {},
-                }
-              },
-            },
-          ],
+          tools: [],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: "NONE"
+            }
+          }
         };
-
-        if (baseSeed !== undefined) {
-          config.seed = baseSeed;
-        }
 
         const response = await withRetry(() => ai.models.generateContent({
           model: 'gemini-3.1-flash-image-preview',
@@ -153,16 +153,25 @@ export async function generateMultipleImages(
           config,
         }));
         
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
+        const candidate = response.candidates?.[0];
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+          throw new Error(`Image generation stopped due to: ${candidate.finishReason}`);
+        }
+
+        for (const part of candidate?.content?.parts || []) {
           if (part.inlineData) {
             const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
             return base64ToBlobUrl(base64);
           }
         }
-        return null;
+        
+        throw new Error("No inlineData found in response: " + JSON.stringify({
+          finishReason: candidate?.finishReason,
+          parts: candidate?.content?.parts?.map(p => Object.keys(p))
+        }));
       } catch (e) {
         console.error("Image generation error:", e);
-        return null;
+        throw e;
       }
     };
   });
@@ -252,7 +261,8 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
     }
   }
 
-  parts.push({ text: prompt });
+  const finalPrompt = prompt;
+  parts.push({ text: finalPrompt });
 
   const response = await withRetry(() => ai.models.generateContent({
     model: 'gemini-3.1-flash-image-preview',
@@ -260,17 +270,32 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
     config: {
       imageConfig: {
         imageSize: "4K"
+      },
+      tools: [],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: "NONE"
+        }
       }
     }
   }));
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
+  const candidate = response.candidates?.[0];
+  if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+    throw new Error(`Image generation stopped due to: ${candidate.finishReason}`);
+  }
+
+  for (const part of candidate?.content?.parts || []) {
     if (part.inlineData) {
       const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       return base64ToBlobUrl(base64);
     }
   }
-  throw new Error("No image generated");
+  
+  throw new Error("No inlineData found in response: " + JSON.stringify({
+    finishReason: candidate?.finishReason,
+    parts: candidate?.content?.parts?.map(p => Object.keys(p))
+  }));
 }
 
 export async function generateCopywriting(image: string | null, context: string, platform: string): Promise<string> {

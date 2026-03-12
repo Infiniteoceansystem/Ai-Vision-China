@@ -251,7 +251,7 @@ function TryonPanel({ onGenerate }: { onGenerate: (prompts: string[], references
     basePrompt += `请生成一张高质量、逼真的全身照。`;
     
     for (let i = 0; i < count; i++) {
-      prompts.push(basePrompt + `\n(Variation ${i + 1}: 请在保持服装和风格一致的前提下，让模特的微表情和细节产生自然变化。)`);
+      prompts.push(basePrompt + `\n[Variation ${i + 1}] 请在保持服装和风格一致的前提下，让模特的微表情和细节产生自然变化。`);
     }
     onGenerate(prompts, { clothing: clothingImage, style: styleImage }, Math.floor(Math.random() * 1000000));
   };
@@ -474,7 +474,7 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
     basePrompt += `\n【无水印要求】请务必确保生成的图片中没有任何形式的水印、文字、签名或Logo标识，保持画面纯净。`;
 
     for (let i = 0; i < formData.count; i++) {
-      let variationPrompt = `\n(Variation ${i + 1}: `;
+      let variationPrompt = `\n[Variation ${i + 1}] `;
       const v = variations[i];
       
       if (formData.age === "儿童") {
@@ -486,7 +486,7 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
       variationPrompt += `景深与虚化效果：${v.dof}。`;
       variationPrompt += `人物构图与占比：${v.composition}。`;
 
-      variationPrompt += `请让模特的姿势产生自然变化，确保与上一张有明显差异。)`;
+      variationPrompt += `请让模特的姿势产生自然变化，确保与上一张有明显差异。`;
       prompts.push(basePrompt + variationPrompt);
     }
 
