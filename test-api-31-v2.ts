@@ -4,14 +4,13 @@ import dotenv from "dotenv";
 dotenv.config();
 
 async function test() {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error("No API key");
     return;
   }
   const ai = new GoogleGenAI({ apiKey });
 
-  // Create a dummy 1x1 image
   const dummyBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
   try {
@@ -26,14 +25,7 @@ async function test() {
             }
           },
           { text: "Image 1: Clothing reference." },
-          {
-            inlineData: {
-              data: dummyBase64,
-              mimeType: "image/png",
-            }
-          },
-          { text: "Image 2: Style reference." },
-          { text: "Generate a person wearing the clothing in Image 1 with the style of Image 2." }
+          { text: "Generate a person wearing the clothing in Image 1 with the style of Image 2. [Variation 1]" }
         ]
       },
       config: {

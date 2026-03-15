@@ -20,9 +20,20 @@ export interface TextOverlay {
   fontFamily: string;
 }
 
+export interface GeneratedImage {
+  id: string;
+  url: string;
+  prompt: string;
+  settings: {
+    style: string;
+    brightness: number;
+    contrast: number;
+  };
+}
+
 export default function Editor() {
-  const [activeTool, setActiveTool] = useState<ToolType>("tryon");
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [activeTool, setActiveTool] = useState<ToolType>("character");
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [texts, setTexts] = useState<TextOverlay[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
@@ -41,12 +52,23 @@ export default function Editor() {
     setLoadingMessage("正在使用网络搜索生成图像...");
     try {
       const imgs = await generateMultipleImages(prompts, references, seed);
-      setGeneratedImages(prev => [...prev, ...imgs]);
-      setCurrentImage(imgs[0]);
+      // Change: Store images as objects with ID and URL
+      const newImages = imgs.map(img => ({
+        id: Date.now().toString() + Math.random(),
+        url: img,
+        prompt: "", // Will be filled later
+        settings: {
+          style: "default",
+          brightness: 100,
+          contrast: 100
+        }
+      }));
+      setGeneratedImages(prev => [...prev, ...newImages]);
+      setCurrentImage(newImages[0].url);
       setTexts([]); // Clear texts on new image
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("生成图像失败，请重试。");
+      alert(error.message || "生成图像失败，请重试。");
     } finally {
       setIsLoading(false);
     }
@@ -58,11 +80,21 @@ export default function Editor() {
     setLoadingMessage("正在应用 AI 编辑...");
     try {
       const img = await editImage(currentImage, prompt, referenceImage);
-      setGeneratedImages(prev => [...prev, img]);
+      const newImage: GeneratedImage = {
+        id: Date.now().toString() + Math.random(),
+        url: img,
+        prompt: prompt,
+        settings: {
+          style: "default",
+          brightness: 100,
+          contrast: 100
+        }
+      };
+      setGeneratedImages(prev => [...prev, newImage]);
       setCurrentImage(img);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("编辑图像失败，请重试。");
+      alert(error.message || "编辑图像失败，请重试。");
     } finally {
       setIsLoading(false);
     }
@@ -76,9 +108,9 @@ export default function Editor() {
       const img = await flipImage(currentImage, horizontal, vertical);
       setGeneratedImages(prev => [...prev, img]);
       setCurrentImage(img);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("翻转图像失败，请重试。");
+      alert(error.message || "翻转图像失败，请重试。");
     } finally {
       setIsLoading(false);
     }
@@ -176,18 +208,28 @@ export default function Editor() {
     }
   };
 
-  const handleCreateCollage = async (type: '2x2' | '1x2' | '2x1', selectedImages: string[]) => {
-    if (selectedImages.length === 0) return;
+  const handleCreateCollage = async (type: '2x2' | '1x2' | '2x1', selectedImageUrls: string[]) => {
+    if (selectedImageUrls.length === 0) return;
     setIsLoading(true);
     setLoadingMessage("正在生成拼图...");
     try {
-      const collage = await createCollage(selectedImages, type);
-      setGeneratedImages(prev => [...prev, collage]);
+      const collage = await createCollage(selectedImageUrls, type);
+      const newImage: GeneratedImage = {
+        id: Date.now().toString() + Math.random(),
+        url: collage,
+        prompt: "Collage",
+        settings: {
+          style: "default",
+          brightness: 100,
+          contrast: 100
+        }
+      };
+      setGeneratedImages(prev => [...prev, newImage]);
       setCurrentImage(collage);
       setActiveTool("edit"); // Switch to edit mode after collage
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("拼图生成失败，请重试。");
+      alert(error.message || "拼图生成失败，请重试。");
     } finally {
       setIsLoading(false);
     }
@@ -276,11 +318,11 @@ export default function Editor() {
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 bg-white/90 p-3 rounded-2xl backdrop-blur-md border border-stone-200 shadow-xl max-w-[80%] overflow-x-auto custom-scrollbar">
               {generatedImages.map((img, idx) => (
                 <button
-                  key={idx}
-                  onClick={() => setCurrentImage(img)}
-                  className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ${currentImage === img ? 'border-stone-900 scale-110 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  key={img.id}
+                  onClick={() => setCurrentImage(img.url)}
+                  className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ${currentImage === img.url ? 'border-stone-900 scale-110 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
                 >
-                  <img src={img} alt={`Generated ${idx + 1}`} className="w-full h-full object-cover" />
+                  <img src={img.url} alt={`Generated ${idx + 1}`} className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

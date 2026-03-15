@@ -16,7 +16,7 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: false,
       allowedHosts: [
         '.zeabur.app', // 允许所有 zeabur.app 子域名
         '.vercel.app', // 允许所有 vercel.app 子域名

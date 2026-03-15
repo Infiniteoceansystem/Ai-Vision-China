@@ -81,7 +81,7 @@ async function withRetry<T>(
 
 export async function generateMultipleImages(
   prompts: string[], 
-  references: { clothing?: string, style?: string, model?: string, logo?: string } = {}, 
+  references: { clothing?: string, lowerClothing?: string, style?: string, model?: string, logo?: string, background?: string } = {}, 
   baseSeed?: number
 ): Promise<string[]> {
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
@@ -90,44 +90,48 @@ export async function generateMultipleImages(
   const ai = new GoogleGenAI({ apiKey });
 
   let clothingBase64 = references.clothing ? await getBase64FromUrl(references.clothing) : null;
+  let lowerClothingBase64 = references.lowerClothing ? await getBase64FromUrl(references.lowerClothing) : null;
   let styleBase64 = references.style ? await getBase64FromUrl(references.style) : null;
   let modelBase64 = references.model ? await getBase64FromUrl(references.model) : null;
   let logoBase64 = references.logo ? await getBase64FromUrl(references.logo) : null;
+  let backgroundBase64 = references.background ? await getBase64FromUrl(references.background) : null;
 
   if (clothingBase64) clothingBase64 = await compressImage(clothingBase64, 512);
+  if (lowerClothingBase64) lowerClothingBase64 = await compressImage(lowerClothingBase64, 512);
   if (styleBase64) styleBase64 = await compressImage(styleBase64, 512);
   if (modelBase64) modelBase64 = await compressImage(modelBase64, 512);
   if (logoBase64) logoBase64 = await compressImage(logoBase64, 512);
+  if (backgroundBase64) backgroundBase64 = await compressImage(backgroundBase64, 512);
 
   const tasks = prompts.map((prompt, index) => {
     const parts: any[] = [];
-    
-    const imageInstructions: string[] = [];
     let imageIndex = 1;
 
     const addPart = (base64: string | null, instruction: string) => {
       if (base64) {
         const match = base64.match(/^data:(.*?);base64,(.+)$/);
         if (match) {
+          parts.push({ text: `Image ${imageIndex}: ${instruction}` });
           parts.push({
             inlineData: {
               data: match[2],
               mimeType: match[1],
             },
           });
-          imageInstructions.push(`Image ${imageIndex}: ${instruction}`);
           imageIndex++;
         }
       }
     };
 
-    addPart(styleBase64, "Style reference (imitate pose, lighting, and atmosphere).");
-    addPart(clothingBase64, "Clothing reference (character must wear this).");
-    addPart(modelBase64, "Model reference (use this face and body type).");
-    addPart(logoBase64, "Logo/Detail reference (include this exactly on the clothing).");
+    addPart(modelBase64, "Model reference: Use this person's face, body type, and pose as the base.");
+    addPart(clothingBase64, "Upper clothing reference: The model MUST wear this exact upper-body clothing item. Ensure the fit and fabric look realistic.");
+    addPart(lowerClothingBase64, "Lower clothing reference: The model MUST wear this exact lower-body clothing item. Ensure the fit and fabric look realistic.");
+    addPart(backgroundBase64, "Background reference: Place the model in this exact background environment.");
+    addPart(logoBase64, "Detail reference: Include this logo/pattern exactly as shown on the clothing.");
+    addPart(styleBase64, "Style reference: Imitate the lighting, color grading, and overall atmosphere.");
 
-    const finalPrompt = imageInstructions.length > 0 
-      ? `Generate an image based on these references:\n${imageInstructions.join('\n')}\n\nPrompt: ${prompt}`
+    const finalPrompt = imageIndex > 1 
+      ? `Generate an image based on the above references.\n\nPrompt: ${prompt}`
       : prompt;
 
     parts.push({ text: finalPrompt });
@@ -155,6 +159,9 @@ export async function generateMultipleImages(
         
         const candidate = response.candidates?.[0];
         if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+          if (candidate.finishReason === 'PROHIBITED_CONTENT' || candidate.finishReason === 'SAFETY' || candidate.finishReason === 'IMAGE_SAFETY') {
+            throw new Error(`生成被拒绝：图片或提示词触发了安全限制 (${candidate.finishReason})。请尝试更换参考图（避免暴露、血腥等内容）或调整提示词。`);
+          }
           throw new Error(`Image generation stopped due to: ${candidate.finishReason}`);
         }
 
@@ -176,8 +183,13 @@ export async function generateMultipleImages(
     };
   });
 
-  // Process all tasks concurrently for maximum speed as requested
-  const results = await Promise.all(tasks.map(task => task()));
+  // Process all tasks concurrently but with a slight stagger to avoid hitting rate limits simultaneously
+  const results = await Promise.all(tasks.map(async (task, index) => {
+    if (index > 0) {
+      await new Promise(resolve => setTimeout(resolve, index * 1500)); // Stagger by 1.5s
+    }
+    return task();
+  }));
   
   const validResults = results.filter(Boolean) as string[];
   if (validResults.length === 0) throw new Error("No images generated");
@@ -271,17 +283,15 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
       imageConfig: {
         imageSize: "4K"
       },
-      tools: [],
-      toolConfig: {
-        functionCallingConfig: {
-          mode: "NONE"
-        }
-      }
+      tools: []
     }
   }));
 
   const candidate = response.candidates?.[0];
   if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+    if (candidate.finishReason === 'PROHIBITED_CONTENT' || candidate.finishReason === 'SAFETY' || candidate.finishReason === 'IMAGE_SAFETY') {
+      throw new Error(`生成被拒绝：图片或提示词触发了安全限制 (${candidate.finishReason})。请尝试更换参考图（避免暴露、血腥等内容）或调整提示词。`);
+    }
     throw new Error(`Image generation stopped due to: ${candidate.finishReason}`);
   }
 

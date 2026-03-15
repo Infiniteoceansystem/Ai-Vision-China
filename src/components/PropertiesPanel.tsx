@@ -1,6 +1,11 @@
 import React, { useState } from "react";
-import { ToolType, TextOverlay } from "./Editor";
-import { Wand2, Type, Trash2, Plus, Upload, Sparkles, LayoutGrid, FileText, UserSquare, Shirt } from "lucide-react";
+import { ToolType, TextOverlay, GeneratedImage } from "./Editor";
+import { 
+  Wand2, Type, Trash2, Plus, Upload, Sparkles, LayoutGrid, FileText, UserSquare, Shirt, 
+  ChevronDown, ChevronUp, Camera, User, Move, Focus, Maximize2, Minimize2, 
+  ArrowDownLeft, ArrowUpRight, UserCheck, Zap, Image as ImageIcon,
+  Coffee, Eye, Smile, RotateCcw
+} from "lucide-react";
 import { generateCopywriting } from "../services/gemini";
 
 interface PropertiesPanelProps {
@@ -15,7 +20,7 @@ interface PropertiesPanelProps {
   onDeleteText: (id: string) => void;
   hasImage: boolean;
   currentImage: string | null;
-  generatedImages: string[];
+  generatedImages: GeneratedImage[];
   onCreateCollage: (type: '2x2' | '1x2' | '2x1', images: string[]) => void;
   onFlipImage: (horizontal: boolean, vertical: boolean) => void;
   promptCategory: string;
@@ -52,21 +57,16 @@ export default function PropertiesPanel({
   isCharacterExpanded,
   setIsCharacterExpanded,
 }: PropertiesPanelProps) {
-  const isCharacterActive = activeTool === "character";
+  const isCharacterActive = activeTool === "character" || activeTool === "tryon";
   const shouldExpand = isCharacterActive && isCharacterExpanded && !isLoading;
 
   return (
     <aside className={`bg-white border-l border-stone-200 flex flex-col h-full overflow-y-auto shadow-sm z-20 transition-all duration-500 ease-in-out ${shouldExpand ? 'flex-1' : 'w-80'}`}>
       <header className="h-16 border-b border-stone-200 flex items-center justify-between px-8 sticky top-0 bg-white/95 backdrop-blur z-10">
         <h2 className="font-serif text-lg font-medium text-stone-800 tracking-wide flex items-center gap-2">
-          {activeTool === "tryon" && (
+          {(activeTool === "tryon" || activeTool === "character") && (
             <>
-              <Shirt className="w-4 h-4" /> AI 换装
-            </>
-          )}
-          {activeTool === "character" && (
-            <>
-              <UserSquare className="w-4 h-4" /> 人物与小红书
+              <UserSquare className="w-4 h-4" /> AI 模特换装
             </>
           )}
           {activeTool === "edit" && (
@@ -75,7 +75,7 @@ export default function PropertiesPanel({
             </>
           )}
         </h2>
-        {isCharacterActive && (
+        {(activeTool === "tryon" || activeTool === "character") && (
           <button 
             onClick={() => setIsCharacterExpanded(!isCharacterExpanded)}
             className="text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors"
@@ -86,7 +86,7 @@ export default function PropertiesPanel({
       </header>
 
       <div className="p-8 flex-1">
-        {activeTool === "tryon" && <TryonPanel onGenerate={onGenerate} />}
+        {activeTool === "tryon" && <CharacterPanel onGenerate={onGenerate} isExpanded={shouldExpand} />}
         {activeTool === "character" && <CharacterPanel onGenerate={onGenerate} isExpanded={shouldExpand} />}
         {activeTool === "edit" && (
           <EditPanel 
@@ -209,187 +209,55 @@ function PromptPanel({
   );
 }
 
-function TryonPanel({ onGenerate }: { onGenerate: (prompts: string[], references?: any, seed?: number) => void }) {
-  const [clothingImage, setClothingImage] = useState<string | null>(null);
-  const [styleImage, setStyleImage] = useState<string | null>(null);
-  const [watermarkMode, setWatermarkMode] = useState("去除水印");
-  const [count, setCount] = useState(4);
+// 定义可视化选项 - 小红书张力风格 (增强动态与表情)
+const POSE_OPTIONS = [
+  { id: "walking", label: "自信大步", icon: Zap, desc: "大步流星，面部带轻盈自信的微笑，发丝飞扬" },
+  { id: "turn", label: "灵动回眸", icon: UserCheck, desc: "转身瞬间回头，眼神灵动有神，充满情绪张力" },
+  { id: "gesture", label: "张力手势", icon: Sparkles, desc: "手部轻抚脸颊或整理衣领，眼神清冷高级，富有细节" },
+  { id: "street", label: "随性街拍", icon: Camera, desc: "自然行走中被抓拍，表情自然放松，充满生活气息" },
+  { id: "lean", label: "高级感侧影", icon: Maximize2, desc: "身体微侧，展现优美曲线，眼神温柔而坚定" },
+  { id: "sunglasses", label: "调整墨镜", icon: Eye, desc: "手部轻触墨镜边缘，眼神酷飒，充满时尚态度" },
+  { id: "laughing", label: "开怀大笑", icon: Smile, desc: "极具感染力的笑容，展现真实、自然的情绪瞬间" },
+];
 
-  const handleClothingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => setClothingImage(e.target?.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
+const ANGLE_OPTIONS = [
+  { id: "full", label: "全景视角", icon: Maximize2, desc: "展示全身搭配及环境" },
+  { id: "medium", label: "中景视角", icon: LayoutGrid, desc: "膝盖以上的半身构图" },
+  { id: "side", label: "侧向视角", icon: ArrowUpRight, desc: "增加画面深度和时尚感" },
+  { id: "high", label: "高角度俯拍", icon: ArrowDownLeft, desc: "具有艺术感和空间感的视角" },
+  { id: "back", label: "背面视角", icon: UserCheck, desc: "展示服装背面设计细节" },
+  { id: "eye-level", label: "平视视线", icon: Eye, desc: "与模特视线齐平，亲切、真实且自然" },
+];
 
-  const handleStyleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => setStyleImage(e.target?.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clothingImage || !styleImage) {
-      alert("请上传服装图和意向风格图");
-      return;
-    }
-    const prompts: string[] = [];
-    let basePrompt = `请严格让人物穿上我提供的服装参考图中的衣服。【意向风格要求】请严格模仿我提供的意向风格图中的人物姿势、摄影风格、光影效果和整体氛围。`;
-    
-    if (watermarkMode === "去除水印") {
-      basePrompt += `请务必去除原图中的任何水印、文字或标识，保持画面干净。`;
-    } else {
-      basePrompt += `请保留原图中的水印或文字标识。`;
-    }
-    
-    basePrompt += `请生成一张高质量、逼真的全身照。`;
-    
-    for (let i = 0; i < count; i++) {
-      prompts.push(basePrompt + `\n[Variation ${i + 1}] 请在保持服装和风格一致的前提下，让模特的微表情和细节产生自然变化。`);
-    }
-    onGenerate(prompts, { clothing: clothingImage, style: styleImage }, Math.floor(Math.random() * 1000000));
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100">
-        <h3 className="text-sm font-bold text-stone-800 mb-2 flex items-center gap-2">
-          <Shirt className="w-4 h-4 text-indigo-500" />
-          AI 换装
-        </h3>
-        <p className="text-sm text-stone-500 leading-relaxed mb-4">
-          上传服装图和意向风格图，AI 将直接为您生成换装后的模特图。
-        </p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">服装图 (必填)</label>
-          {clothingImage ? (
-            <div className="relative w-full h-32 rounded-xl overflow-hidden border border-stone-200">
-              <img src={clothingImage} className="w-full h-full object-cover" />
-              <button type="button" onClick={() => setClothingImage(null)} className="absolute top-1.5 right-1.5 p-1.5 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
-          ) : (
-            <label className="w-full h-32 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50">
-              <Upload className="w-4 h-4 text-stone-400 mb-1" />
-              <span className="text-[10px] text-stone-500">上传服装</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handleClothingUpload} />
-            </label>
-          )}
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">意向风格图 (必填)</label>
-          {styleImage ? (
-            <div className="relative w-full h-32 rounded-xl overflow-hidden border border-stone-200">
-              <img src={styleImage} className="w-full h-full object-cover" />
-              <button type="button" onClick={() => setStyleImage(null)} className="absolute top-1.5 right-1.5 p-1.5 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
-          ) : (
-            <label className="w-full h-32 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50">
-              <Upload className="w-4 h-4 text-stone-400 mb-1" />
-              <span className="text-[10px] text-stone-500">上传风格图</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handleStyleUpload} />
-            </label>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">水印处理</label>
-          <select value={watermarkMode} onChange={(e) => setWatermarkMode(e.target.value)} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm">
-            <option value="去除水印">去除水印</option>
-            <option value="保留水印">保留水印</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">生成数量</label>
-          <input type="number" min="1" max="10" value={count} onChange={(e) => setCount(Number(e.target.value))} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm" />
-        </div>
-      </div>
-
-      <button type="submit" className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-md">
-        一键换装 ({count}张)
-      </button>
-    </form>
-  );
-}
-
-function CompositionPreview({ type }: { type: string }) {
-  const getStyles = () => {
-    switch (type) {
-      case "居中大比例": return "top-[10%] bottom-[10%] left-[25%] right-[25%]";
-      case "居中偏小 (留白)": return "top-[30%] bottom-[20%] left-[35%] right-[35%]";
-      case "偏左三分线": return "top-[20%] bottom-[15%] left-[10%] right-[50%]";
-      case "偏右三分线": return "top-[20%] bottom-[15%] left-[50%] right-[10%]";
-      case "黄金比例分割": return "top-[25%] bottom-[20%] left-[40%] right-[20%]";
-      default: return "top-[10%] bottom-[10%] left-[25%] right-[25%]";
-    }
-  };
-
-  return (
-    <div className="w-20 aspect-[9/16] mx-auto bg-stone-50 rounded-xl border border-stone-200 relative overflow-hidden flex items-center justify-center mt-1 shadow-inner">
-      {/* Grid lines for visual effect */}
-      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-20 pointer-events-none">
-        <div className="border-r border-b border-stone-400"></div>
-        <div className="border-r border-b border-stone-400"></div>
-        <div className="border-b border-stone-400"></div>
-        <div className="border-r border-b border-stone-400"></div>
-        <div className="border-r border-b border-stone-400"></div>
-        <div className="border-b border-stone-400"></div>
-        <div className="border-r border-stone-400"></div>
-        <div className="border-r border-stone-400"></div>
-        <div></div>
-      </div>
-      {/* Character silhouette */}
-      <div className={`absolute bg-indigo-400/30 border border-indigo-500/50 rounded-md backdrop-blur-sm transition-all duration-500 flex items-center justify-center shadow-sm ${getStyles()}`}>
-        <UserSquare className="w-5 h-5 text-indigo-600/70" />
-      </div>
-      <div className="absolute bottom-1 right-1 left-1 text-[8px] text-stone-400 font-medium tracking-widest uppercase text-center bg-white/80 backdrop-blur-sm py-0.5 rounded">
-        构图预览
-      </div>
-    </div>
-  );
-}
+const PLACEMENT_OPTIONS = [
+  { id: "center", label: "居中", icon: Focus },
+  { id: "left", label: "靠左", icon: ArrowDownLeft },
+  { id: "right", label: "靠右", icon: ArrowUpRight },
+];
 
 function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: string[], references?: any, seed?: number) => void, isExpanded?: boolean }) {
-  const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState({
     gender: "女性",
-    age: "青年",
+    ageCategory: "青少年",
+    ageValue: 18,
     ethnicity: "亚洲人",
-    style: "街头服饰",
-    setting: "极简纯色背景",
-    generationStyle: "小红书爆款网感",
+    height: 165,
     count: 4,
-    consistent: true,
-    kidHeight: 110,
-    shotType: "全身",
+    imageSettings: Array(50).fill(null).map((_, i) => ({
+      pose: POSE_OPTIONS[i % POSE_OPTIONS.length].label,
+      poseId: POSE_OPTIONS[i % POSE_OPTIONS.length].id,
+      cameraAngle: ANGLE_OPTIONS[i % ANGLE_OPTIONS.length].label,
+      angleId: ANGLE_OPTIONS[i % ANGLE_OPTIONS.length].id,
+      placement: "居中"
+    }))
   });
-  
-  const defaultVariations = [
-    { angle: "正面平视", dof: "背景轻微虚化", composition: "居中大比例" },
-    { angle: "侧面半身", dof: "背景强烈虚化 (大光圈)", composition: "偏左三分线" },
-    { angle: "全身远景", dof: "全景清晰 (小光圈)", composition: "居中偏小 (留白)" },
-    { angle: "稍微仰拍", dof: "背景轻微虚化", composition: "偏右三分线" },
-    { angle: "特写近景", dof: "背景强烈虚化 (大光圈)", composition: "居中大比例" },
-    { angle: "稍微俯拍", dof: "全景清晰 (小光圈)", composition: "黄金比例分割" },
-    { angle: "不经意的抓拍", dof: "背景轻微虚化", composition: "偏左三分线" },
-    { angle: "回眸一笑", dof: "背景强烈虚化 (大光圈)", composition: "居中偏小 (留白)" },
-    { angle: "坐姿", dof: "背景轻微虚化", composition: "偏右三分线" },
-    { angle: "走路抓拍", dof: "全景清晰 (小光圈)", composition: "黄金比例分割" },
-  ];
 
-  const [variations, setVariations] = useState(defaultVariations.slice(0, 4));
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
 
   const [clothingImage, setClothingImage] = useState<string | null>(null);
+  const [lowerBodyImage, setLowerBodyImage] = useState<string | null>(null);
   const [modelImage, setModelImage] = useState<string | null>(null);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string | null) => void) => {
@@ -402,96 +270,63 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
-    const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.type === 'number' ? Number(e.target.value) : e.target.value;
-    setFormData({ ...formData, [e.target.name]: value });
+    const value = e.target.type === 'number' ? Number(e.target.value) : e.target.value;
     
     if (e.target.name === 'count') {
-      const newCount = Number(e.target.value);
-      setVariations(prev => {
-        const newVars = [...prev];
-        while (newVars.length < newCount) {
-          newVars.push(defaultVariations[newVars.length % defaultVariations.length]);
-        }
-        return newVars.slice(0, newCount);
-      });
+      const newCount = Number(value);
+      if (newCount > formData.imageSettings.length) {
+        // 动态增加配置数组
+        const additionalSettings = Array(newCount - formData.imageSettings.length).fill(null).map((_, i) => {
+          const idx = formData.imageSettings.length + i;
+          return {
+            pose: POSE_OPTIONS[idx % POSE_OPTIONS.length].label,
+            poseId: POSE_OPTIONS[idx % POSE_OPTIONS.length].id,
+            cameraAngle: ANGLE_OPTIONS[idx % ANGLE_OPTIONS.length].label,
+            angleId: ANGLE_OPTIONS[idx % ANGLE_OPTIONS.length].id,
+            placement: "居中"
+          };
+        });
+        setFormData({ 
+          ...formData, 
+          count: newCount, 
+          imageSettings: [...formData.imageSettings, ...additionalSettings] 
+        });
+        return;
+      }
     }
-  };
-
-  const handleVariationChange = (index: number, field: string, value: string) => {
-    setVariations(prev => {
-      const newVars = [...prev];
-      newVars[index] = { ...newVars[index], [field]: value };
-      return newVars;
-    });
+    
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!clothingImage || !modelImage) {
+      alert("请上传服装图和场景/模特参考图");
+      return;
+    }
+
     const prompts: string[] = [];
-    let basePrompt = "";
-
-    if (formData.generationStyle === "小红书爆款网感") {
-      basePrompt = `请深度分析我提供的服装款式、材质和调性。使用网络搜索（特别是小红书OOTD、穿搭博主素材）来寻找最适合这件衣服的搭配灵感。
-请生成一张极具“小红书爆款”风格的高质量、逼真全身照（必须是4K超高清分辨率）。
-人物特征：${formData.age}、${formData.ethnicity}、${formData.gender}。
-背景环境：${formData.setting}。`;
-      if (clothingImage) {
-        basePrompt += `\n请严格让人物穿上我提供的服装参考图中的衣服。`;
-      } else {
-        basePrompt += `\n服装款式：${formData.style}。`;
-      }
-      basePrompt += `\n要求：
-1. 风格必须是小红书热门的网感穿搭（如：老钱风、辣妹风、极简高级感、韩系慵懒风等）。
-2. 【背景要求】背景必须简洁、干净，不能过于复杂抢眼，可以适当虚化（景深效果），以最大程度突出人物的服装款式和材质。
-3. 人物姿势要自然、松弛、有表现力（如：对镜自拍、走路抓拍、不露脸氛围感）。`;
-    } else {
-      basePrompt = `请生成一张高质量、逼真的全身照（必须是4K超高清分辨率）。人物特征：${formData.age}、${formData.ethnicity}、${formData.gender}。`;
-      if (clothingImage) {
-        basePrompt += `请严格让人物穿上我提供的服装参考图中的衣服。`;
-      } else {
-        basePrompt += `服装款式：${formData.style}。`;
-      }
-      basePrompt += `背景环境：${formData.setting}。
-【背景要求】背景必须简洁、干净，不能过于复杂抢眼，可以适当虚化（景深效果），以最大程度突出人物的服装款式和材质。`;
-    }
-
-    if (formData.age === "儿童" || formData.age === "青少年") {
-      basePrompt += "\n【长相与表情要求：人物长相必须非常精致、好看，有那种极高颜值、非常讨喜的小孩/青少年的感觉。表情需自然生动、带有童趣。】";
-      if (formData.age === "儿童") {
-        basePrompt += `\n【童模要求】童模身高约为 ${formData.kidHeight}cm。`;
-      }
-    } else {
-      basePrompt += "\n【长相要求：人物长相必须非常精致、好看，有极高的颜值和气质。】";
-    }
-
-    if (modelImage) {
-      basePrompt += `\n【模特一致性】请严格参考我提供的模特面部特征图，保持脸型、五官和气质高度一致。`;
-    }
-    if (logoImage) {
-      basePrompt += `\n【商标细节】请严格参考我提供的商标细节图，确保衣服上的Logo、图案、文字准确无误地还原在生成的服装上。`;
-    }
-
-    basePrompt += `\n【无水印要求】请务必确保生成的图片中没有任何形式的水印、文字、签名或Logo标识，保持画面纯净。`;
+    let basePrompt = `A vibrant, high-energy street photography shot.
+Subject: A ${formData.ageValue}-year-old ${formData.ethnicity} ${formData.gender} model with a natural, expressive look.
+Task: 
+1. Virtual Try-On: The model MUST wear the exact clothing item shown in the clothing reference image. If the item is a full-body piece (like a dress), do NOT add any additional pants or jeans.
+${lowerBodyImage ? '2. Virtual Try-On (Lower Body): The model MUST wear the exact lower-body clothing item shown in the lower-body clothing reference image. Do not substitute it with jeans or any other item.' : '2. Outfit Completion: If the clothing reference is only an upper-body item, automatically design a matching lower-body item. CRITICAL: Maintain strict consistency for this lower-body item across all images in this set. If you choose a specific style (e.g., a black skirt), use that exact same style for all generated images.'}
+3. Model Consistency: The model's face and body type should match the model reference image, but with a more relaxed, candid vibe.
+4. Environment: Place the model in a vibrant urban environment or the exact setting shown in the background reference image. The lighting should be natural, as if captured during a walk in the city.
+5. Style: Street snap style, candid moment, natural sunlight, urban aesthetic, vivid colors, eye-catching composition.
+6. Consistency & Safety: Ensure the model\'s outfit is perfectly consistent across all images. No unexpected items like jeans should appear if they are not part of the original design. Adhere strictly to safety guidelines; the content must be professional and high-end.`;
 
     for (let i = 0; i < formData.count; i++) {
-      let variationPrompt = `\n[Variation ${i + 1}] `;
-      const v = variations[i];
-      
-      if (formData.age === "儿童") {
-        variationPrompt += `拍摄视角：${formData.shotType}。`;
-      } else {
-        variationPrompt += `拍摄视角：${v.angle}。`;
-      }
-      
-      variationPrompt += `景深与虚化效果：${v.dof}。`;
-      variationPrompt += `人物构图与占比：${v.composition}。`;
-
-      variationPrompt += `请让模特的姿势产生自然变化，确保与上一张有明显差异。`;
-      prompts.push(basePrompt + variationPrompt);
+      const setting = formData.imageSettings[i];
+      prompts.push(basePrompt + `
+Camera Angle: ${setting.cameraAngle} view, candid street photography style.
+Pose & Expression: ${setting.pose}. The model should look natural and spontaneous, as if they are genuinely enjoying their time in the city.
+Placement: The model is positioned at the ${setting.placement} of the frame.
+Vibe: Spontaneous, eye-catching, natural, urban fashion.`);
     }
 
-    const seed = formData.consistent ? Math.floor(Math.random() * 1000000) : undefined;
-    onGenerate(prompts, { clothing: clothingImage || undefined, model: modelImage || undefined, logo: logoImage || undefined }, seed);
+    // Pass modelImage as model reference
+    onGenerate(prompts, { clothing: clothingImage, lowerBody: lowerBodyImage || undefined, model: modelImage, background: backgroundImage || undefined, logo: logoImage || undefined }, Math.floor(Math.random() * 1000000));
   };
 
   return (
@@ -499,10 +334,10 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
       <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100">
         <h3 className="text-sm font-bold text-stone-800 mb-2 flex items-center gap-2">
           <UserSquare className="w-4 h-4 text-indigo-500" />
-          人物与小红书风格
+          AI 模特换装 (场景连贯)
         </h3>
         <p className="text-sm text-stone-500 leading-relaxed mb-4">
-          根据您设定的人物特征和场景，生成专属模特。可选择生成小红书爆款网感大片，或常规高质量照片。
+          提供服装图和场景/模特参考图。AI 将参考图的氛围感和光影，生成连贯的多角度换装模特图。步骤已极简，无需繁琐设置。
         </p>
       </div>
 
@@ -510,25 +345,42 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
         {/* Left Column / Top Section */}
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">服装图 (可选)</label>
-              {clothingImage ? (
-                <div className="relative w-full h-32 rounded-xl overflow-hidden border border-stone-200">
-                  <img src={clothingImage} className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => setClothingImage(null)} className="absolute top-1.5 right-1.5 p-1.5 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-              ) : (
-                <label className="w-full h-32 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
-                  <Upload className="w-4 h-4 text-stone-400 mb-1" />
-                  <span className="text-[10px] text-stone-500">上传服装 (可选)</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setClothingImage)} />
-                </label>
-              )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">服装图 (上身必填)</label>
+                {clothingImage ? (
+                  <div className="relative w-full h-24 rounded-xl overflow-hidden border border-stone-200">
+                    <img src={clothingImage} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setClothingImage(null)} className="absolute top-1 right-1 p-1 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <label className="w-full h-24 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
+                    <Upload className="w-4 h-4 text-stone-400 mb-1" />
+                    <span className="text-[10px] text-stone-500 text-center px-2">上传上装</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setClothingImage)} />
+                  </label>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">下装图 (可选)</label>
+                {lowerBodyImage ? (
+                  <div className="relative w-full h-24 rounded-xl overflow-hidden border border-stone-200">
+                    <img src={lowerBodyImage} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setLowerBodyImage(null)} className="absolute top-1 right-1 p-1 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <label className="w-full h-24 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
+                    <Upload className="w-4 h-4 text-stone-400 mb-1" />
+                    <span className="text-[10px] text-stone-500 text-center px-2">上传下装</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setLowerBodyImage)} />
+                  </label>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">模特参考图 (可选)</label>
+                <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">模特图 (必填)</label>
                 {modelImage ? (
                   <div className="relative w-full h-24 rounded-xl overflow-hidden border border-stone-200">
                     <img src={modelImage} className="w-full h-full object-cover" />
@@ -537,8 +389,23 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
                 ) : (
                   <label className="w-full h-24 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
                     <Upload className="w-4 h-4 text-stone-400 mb-1" />
-                    <span className="text-[10px] text-stone-500 text-center px-2">上传模特脸型<br/>(保持一致)</span>
+                    <span className="text-[10px] text-stone-500 text-center px-2">上传模特图</span>
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setModelImage)} />
+                  </label>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">背景图 (可选)</label>
+                {backgroundImage ? (
+                  <div className="relative w-full h-24 rounded-xl overflow-hidden border border-stone-200">
+                    <img src={backgroundImage} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setBackgroundImage(null)} className="absolute top-1 right-1 p-1 bg-white/80 text-stone-600 rounded-full"><Trash2 className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <label className="w-full h-24 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
+                    <Upload className="w-4 h-4 text-stone-400 mb-1" />
+                    <span className="text-[10px] text-stone-500 text-center px-2">上传背景图</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setBackgroundImage)} />
                   </label>
                 )}
               </div>
@@ -552,94 +419,187 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
                 ) : (
                   <label className="w-full h-24 border border-dashed border-stone-300 hover:border-stone-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-white/50 transition-colors">
                     <Upload className="w-4 h-4 text-stone-400 mb-1" />
-                    <span className="text-[10px] text-stone-500 text-center px-2">上传商标/Logo<br/>(确保准确)</span>
+                    <span className="text-[10px] text-stone-500 text-center px-2">上传商标/Logo</span>
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setLogoImage)} />
                   </label>
                 )}
               </div>
             </div>
           </div>
-
-          <div className="w-full h-px bg-stone-200"></div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField label="性别" name="gender" value={formData.gender} onChange={handleChange} options={["女性", "男性", "非二元性别"]} />
-            <SelectField label="年龄" name="age" value={formData.age} onChange={handleChange} options={["儿童", "青少年", "青年", "成年", "老年"]} />
-            <SelectField label="人种" name="ethnicity" value={formData.ethnicity} onChange={handleChange} options={["亚洲人", "白人", "黑人", "西班牙裔", "中东人", "混血"]} />
-            {!clothingImage && (
-              <SelectField label="服装款式" name="style" value={formData.style} onChange={handleChange} options={["街头服饰", "休闲装", "正装", "复古装", "运动装", "极简主义"]} />
-            )}
-          </div>
-
-          {formData.age === "儿童" && (
-            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex flex-col gap-3">
-              <h4 className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> 童装专属设置
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-semibold text-indigo-600 uppercase tracking-widest">童模身高 (cm)</label>
-                  <input type="number" name="kidHeight" min="90" max="160" value={formData.kidHeight} onChange={handleChange} className="bg-white border border-indigo-200 rounded-lg p-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
-                </div>
-                <SelectField label="拍摄视角" name="shotType" value={formData.shotType} onChange={handleChange} options={["全身", "半身", "背面"]} />
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField label="背景环境" name="setting" value={formData.setting} onChange={handleChange} options={["极简纯色背景", "简约咖啡馆角落", "干净的城市街道", "极简工作室", "自然风景", "高级灰调室内"]} />
-            <SelectField label="生成风格" name="generationStyle" value={formData.generationStyle} onChange={handleChange} options={["小红书爆款网感", "常规高质量"]} />
-          </div>
         </div>
 
         {/* Right Column / Bottom Section */}
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">生成数量 (4K超高清, 9:16竖屏)</label>
-            <input type="number" name="count" min="1" max="10" value={formData.count} onChange={handleChange} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm" />
-          </div>
-
-          <div className="flex flex-col gap-3 flex-1">
-            <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest flex items-center gap-2">
-              <LayoutGrid className="w-3.5 h-3.5" /> 分镜详细设置 (共 {formData.count} 张)
-            </label>
-            <div className={`flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar ${isExpanded ? 'h-[400px]' : 'max-h-80'}`}>
-              {variations.map((v, i) => (
-                <div key={i} className="bg-white p-3.5 rounded-xl border border-stone-200 flex flex-col gap-3 shadow-sm">
-                  <div className="text-xs font-bold text-stone-700 flex items-center gap-2 border-b border-stone-100 pb-2">
-                    <span className="w-5 h-5 rounded-full bg-stone-100 flex items-center justify-center text-[10px] text-stone-600">{i + 1}</span>
-                    第 {i + 1} 张照片设置
-                  </div>
-                  <div className="flex flex-col gap-2.5">
-                    <SelectField label="拍照角度" value={v.angle} onChange={(e) => handleVariationChange(i, 'angle', e.target.value)} options={["正面平视", "稍微仰拍", "稍微俯拍", "特写近景", "全身远景", "侧面半身", "不经意的抓拍", "回眸一笑", "坐姿", "走路抓拍"]} />
-                    <SelectField label="背景虚化" value={v.dof} onChange={(e) => handleVariationChange(i, 'dof', e.target.value)} options={["背景强烈虚化 (大光圈)", "背景轻微虚化", "全景清晰 (小光圈)", "前景虚化"]} />
-                    <SelectField label="人物构图" value={v.composition} onChange={(e) => handleVariationChange(i, 'composition', e.target.value)} options={["居中大比例", "居中偏小 (留白)", "偏左三分线", "偏右三分线", "黄金比例分割"]} />
-                    <CompositionPreview type={v.composition} />
-                  </div>
-                </div>
-              ))}
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField label="性别" name="gender" value={formData.gender} onChange={handleChange} options={["女性", "男性", "非二元性别"]} />
+            <SelectField label="年龄段" name="ageCategory" value={formData.ageCategory} onChange={handleChange} options={["儿童", "青少年", "成年", "老年"]} />
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">具体年龄 (岁)</label>
+              <input type="number" name="ageValue" value={formData.ageValue} onChange={handleChange} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm" />
+            </div>
+            <SelectField label="人种" name="ethnicity" value={formData.ethnicity} onChange={handleChange} options={["亚洲人", "白人", "黑人", "西班牙裔", "中东人", "混血"]} />
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">模特身高 (cm)</label>
+              <input type="number" name="height" value={formData.height} onChange={handleChange} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-semibold text-stone-500 uppercase tracking-widest">生成数量</label>
+              <input type="number" name="count" min="1" value={formData.count} onChange={handleChange} className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm" />
             </div>
           </div>
 
           <div className="flex flex-col gap-3 mt-auto pt-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                name="consistent" 
-                checked={formData.consistent} 
-                onChange={handleChange}
-                className="w-4 h-4 text-indigo-600 rounded border-stone-300 focus:ring-indigo-500"
-              />
-              <span className="text-sm text-stone-700 font-medium">保持人物与场景连贯一致</span>
-            </label>
-            <p className="text-xs text-stone-500 ml-6">
-              勾选后，多张图片将使用相同的模特和背景，仅改变拍摄视角和姿势。
-            </p>
-            
             <button type="submit" className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-md mt-2 transition-transform active:scale-[0.98]">
-              生成人物图 ({formData.count}张)
+              一键生成连贯换装图 ({formData.count}张)
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* 街拍灵感配置面板 - 紧凑且自然 */}
+      <div className="flex flex-col gap-6 mt-6 border-t border-stone-200 pt-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h2 className="text-lg font-bold text-stone-900 tracking-tight">
+                街拍灵感配置 <span className="text-stone-400 font-normal text-sm">/ Street Snap</span>
+              </h2>
+            </div>
+            <p className="text-[10px] text-stone-500">捕捉让人眼前一亮的效果，赋予 AI 模特真实的都市张力。</p>
+          </div>
+          <button 
+            type="button"
+            onClick={() => {
+              const newSettings = [...formData.imageSettings];
+              newSettings.forEach((s, i) => {
+                s.pose = POSE_OPTIONS[i % POSE_OPTIONS.length].label;
+                s.poseId = POSE_OPTIONS[i % POSE_OPTIONS.length].id;
+                s.cameraAngle = ANGLE_OPTIONS[i % ANGLE_OPTIONS.length].label;
+                s.angleId = ANGLE_OPTIONS[i % ANGLE_OPTIONS.length].id;
+              });
+              setFormData({ ...formData, imageSettings: newSettings });
+            }}
+            className="flex items-center gap-2 px-6 py-2.5 bg-stone-900 text-white rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-stone-800 transition-all active:scale-95"
+          >
+            <Zap className="w-3 h-3 text-amber-400 fill-amber-400" /> 
+            智能分配视角
+          </button>
+        </div>
+        
+        <div className={`grid gap-4 ${isExpanded ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-1'}`}>
+          {formData.imageSettings.slice(0, formData.count).map((setting, idx) => {
+            const isExpandedCard = expandedIndex === idx;
+            
+            return (
+              <div key={idx} className={`group relative border rounded-2xl overflow-hidden transition-all duration-300 ${isExpandedCard ? 'border-stone-900 shadow-lg bg-white col-span-full' : 'border-stone-200 bg-white hover:border-stone-400 hover:shadow-md'}`}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedIndex(isExpandedCard ? null : idx)}
+                  className={`relative z-10 w-full px-5 py-4 flex items-center justify-between transition-all ${isExpandedCard ? 'bg-stone-900 text-white' : 'hover:bg-stone-50'}`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all ${isExpandedCard ? 'bg-white text-stone-900' : 'bg-stone-100 text-stone-400'}`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-tight">{setting.cameraAngle}</span>
+                        <span className={`text-[10px] ${isExpandedCard ? 'text-stone-500' : 'text-stone-300'}`}>|</span>
+                        <span className="text-xs font-medium">{setting.pose}</span>
+                      </div>
+                      <span className={`text-[9px] font-medium uppercase tracking-widest ${isExpandedCard ? 'text-stone-400' : 'text-stone-500'}`}>
+                        {setting.placement}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isExpandedCard ? 'text-white rotate-180' : 'text-stone-400'}`} />
+                </button>
+                
+                {isExpandedCard && (
+                  <div className="relative z-10 p-6 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                      {/* 视角选择 */}
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-2">
+                          视角选择 <span className="text-stone-300">/ Angle</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {ANGLE_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                const newSettings = [...formData.imageSettings];
+                                newSettings[idx].cameraAngle = opt.label;
+                                newSettings[idx].angleId = opt.id;
+                                setFormData({ ...formData, imageSettings: newSettings });
+                              }}
+                              className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all ${setting.angleId === opt.id ? 'border-stone-900 bg-stone-50 shadow-sm' : 'border-stone-100 bg-white hover:border-stone-300'}`}
+                            >
+                              <opt.icon className={`w-4 h-4 ${setting.angleId === opt.id ? 'text-stone-900' : 'text-stone-300'}`} />
+                              <span className={`text-[10px] font-bold ${setting.angleId === opt.id ? 'text-stone-900' : 'text-stone-500'}`}>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 动作选择 */}
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-2">
+                          动作灵感 <span className="text-stone-300">/ Pose</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {POSE_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                const newSettings = [...formData.imageSettings];
+                                newSettings[idx].pose = opt.label;
+                                newSettings[idx].poseId = opt.id;
+                                setFormData({ ...formData, imageSettings: newSettings });
+                              }}
+                              className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all ${setting.poseId === opt.id ? 'border-stone-900 bg-stone-50 shadow-sm' : 'border-stone-100 bg-white hover:border-stone-300'}`}
+                            >
+                              <opt.icon className={`w-4 h-4 ${setting.poseId === opt.id ? 'text-stone-900' : 'text-stone-300'}`} />
+                              <span className={`text-[10px] font-bold ${setting.poseId === opt.id ? 'text-stone-900' : 'text-stone-500'}`}>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 位置选择 */}
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-2">
+                          构图位置 <span className="text-stone-300">/ Placement</span>
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {PLACEMENT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                const newSettings = [...formData.imageSettings];
+                                newSettings[idx].placement = opt.label;
+                                setFormData({ ...formData, imageSettings: newSettings });
+                              }}
+                              className={`flex flex-col items-center gap-2 p-2 rounded-xl border transition-all ${setting.placement === opt.label ? 'border-stone-900 bg-stone-50 shadow-sm' : 'border-stone-100 bg-white hover:border-stone-300'}`}
+                            >
+                              <div className="w-full aspect-[4/3] bg-stone-100 rounded-lg relative overflow-hidden border border-stone-200">
+                                <div className={`absolute top-1/2 -translate-y-1/2 w-1/3 h-3/4 rounded-md transition-all duration-300 ${opt.id === 'left' ? 'left-1' : opt.id === 'right' ? 'right-1' : 'left-1/2 -translate-x-1/2'} ${setting.placement === opt.label ? 'bg-stone-900' : 'bg-stone-300'}`}></div>
+                              </div>
+                              <span className={`text-[9px] font-bold ${setting.placement === opt.label ? 'text-stone-900' : 'text-stone-500'}`}>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </form>
@@ -668,7 +628,7 @@ function EditPanel({
   onEdit: (prompt: string, referenceImage?: string) => void;
   hasImage: boolean;
   onFlipImage: (horizontal: boolean, vertical: boolean) => void;
-  generatedImages: string[];
+  generatedImages: GeneratedImage[];
   onCreateCollage: (type: '2x2' | '1x2' | '2x1', images: string[]) => void;
   currentImage: string | null;
   onAddText: () => void;
@@ -1040,7 +1000,7 @@ function SelectField({ label, name, value, onChange, options, disabled }: any) {
   );
 }
 
-function CollagePanel({ generatedImages, onCreateCollage }: { generatedImages: string[], onCreateCollage: (type: '2x2' | '1x2' | '2x1', images: string[]) => void }) {
+function CollagePanel({ generatedImages, onCreateCollage }: { generatedImages: GeneratedImage[], onCreateCollage: (type: '2x2' | '1x2' | '2x1', images: string[]) => void }) {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [collageType, setCollageType] = useState<'2x2' | '1x2' | '2x1'>('2x2');
 
@@ -1108,14 +1068,14 @@ function CollagePanel({ generatedImages, onCreateCollage }: { generatedImages: s
         <div className="grid grid-cols-2 gap-3">
           {generatedImages.map((img, idx) => (
             <button
-              key={idx}
-              onClick={() => toggleImage(img)}
-              className={`relative aspect-[3/4] rounded-xl overflow-hidden border-2 transition-all ${selectedImages.includes(img) ? 'border-stone-900 scale-95 shadow-md' : 'border-transparent hover:scale-95'}`}
+              key={img.id}
+              onClick={() => toggleImage(img.url)}
+              className={`relative aspect-[3/4] rounded-xl overflow-hidden border-2 transition-all ${selectedImages.includes(img.url) ? 'border-stone-900 scale-95 shadow-md' : 'border-transparent hover:scale-95'}`}
             >
-              <img src={img} alt={`Generated ${idx + 1}`} className="w-full h-full object-cover" />
-              {selectedImages.includes(img) && (
+              <img src={img.url} alt={`Generated ${idx + 1}`} className="w-full h-full object-cover" />
+              {selectedImages.includes(img.url) && (
                 <div className="absolute top-2 right-2 w-6 h-6 bg-stone-900 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  {selectedImages.indexOf(img) + 1}
+                  {selectedImages.indexOf(img.url) + 1}
                 </div>
               )}
             </button>

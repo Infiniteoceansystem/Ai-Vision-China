@@ -8,8 +8,7 @@ interface SidebarProps {
 
 export default function Sidebar({ activeTool, setActiveTool }: SidebarProps) {
   const tools = [
-    { id: "tryon", icon: Shirt, label: "AI 换装" },
-    { id: "character", icon: UserSquare, label: "人物与小红书" },
+    { id: "character", icon: UserSquare, label: "AI 模特换装" },
     { id: "edit", icon: Wand2, label: "AI 编辑" },
   ];
 
