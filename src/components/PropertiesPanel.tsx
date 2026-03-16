@@ -211,22 +211,22 @@ function PromptPanel({
 
 // 定义可视化选项 - 小红书张力风格 (增强动态与表情)
 const POSE_OPTIONS = [
-  { id: "walking", label: "自信大步", icon: Zap, desc: "大步流星，面部带轻盈自信的微笑，发丝飞扬" },
-  { id: "turn", label: "灵动回眸", icon: UserCheck, desc: "转身瞬间回头，眼神灵动有神，充满情绪张力" },
-  { id: "gesture", label: "张力手势", icon: Sparkles, desc: "手部轻抚脸颊或整理衣领，眼神清冷高级，富有细节" },
-  { id: "street", label: "随性街拍", icon: Camera, desc: "自然行走中被抓拍，表情自然放松，充满生活气息" },
-  { id: "lean", label: "高级感侧影", icon: Maximize2, desc: "身体微侧，展现优美曲线，眼神温柔而坚定" },
-  { id: "sunglasses", label: "调整墨镜", icon: Eye, desc: "手部轻触墨镜边缘，眼神酷飒，充满时尚态度" },
-  { id: "laughing", label: "开怀大笑", icon: Smile, desc: "极具感染力的笑容，展现真实、自然的情绪瞬间" },
+  { id: "walking", label: "自信大步", icon: Zap, desc: "大步流星，面部带轻盈自信的微笑，发丝飞扬", promptDesc: "Striding confidently forward on a city sidewalk. One hand casually holding the edge of a jacket or a bag strap, the other arm swinging naturally. Candid street snap style, dynamic and energetic." },
+  { id: "turn", label: "灵动回眸", icon: UserCheck, desc: "转身瞬间回头，眼神灵动有神，充满情绪张力", promptDesc: "Looking back over the shoulder while walking down an urban street. One hand elegantly brushing hair behind the ear. Candid, expressive, and captivating urban moment." },
+  { id: "gesture", label: "张力手势", icon: Sparkles, desc: "手部轻抚脸颊或整理衣领，眼神清冷高级，富有细节", promptDesc: "Standing on a bustling street corner, one hand elegantly touching the collar or lightly adjusting the outfit. Sophisticated, high-fashion editorial posture with a candid urban vibe." },
+  { id: "street", label: "随性街拍", icon: Camera, desc: "自然行走中被抓拍，表情自然放松，充满生活气息", promptDesc: "Casual mid-step walking, looking away from the camera as if caught in a candid moment. One hand casually tucked into a pocket or resting lightly on the hip. Natural, effortless street photography." },
+  { id: "lean", label: "高级感侧影", icon: Maximize2, desc: "身体微侧，展现优美曲线，眼神温柔而坚定", promptDesc: "Leaning slightly against a clean urban architectural element. One arm loosely crossed or hand resting gently on the waist. Elegant, modest, and grounded street portrait." },
+  { id: "sunglasses", label: "调整墨镜", icon: Eye, desc: "手部轻触墨镜边缘，眼神酷飒，充满时尚态度", promptDesc: "Walking through the city, one hand elegantly adjusting the frame of stylish sunglasses. Cool, confident, and chic fashion attitude in a candid street setting." },
+  { id: "laughing", label: "开怀大笑", icon: Smile, desc: "极具感染力的笑容，展现真实、自然的情绪瞬间", promptDesc: "Captured in a moment of genuine, joyful laughter on a sunny street. One hand naturally coming up to lightly touch the chest or brush away hair. Radiant, approachable, and full of life." },
 ];
 
 const ANGLE_OPTIONS = [
-  { id: "full", label: "全景视角", icon: Maximize2, desc: "展示全身搭配及环境" },
-  { id: "medium", label: "中景视角", icon: LayoutGrid, desc: "膝盖以上的半身构图" },
-  { id: "side", label: "侧向视角", icon: ArrowUpRight, desc: "增加画面深度和时尚感" },
-  { id: "high", label: "高角度俯拍", icon: ArrowDownLeft, desc: "具有艺术感和空间感的视角" },
-  { id: "back", label: "背面视角", icon: UserCheck, desc: "展示服装背面设计细节" },
-  { id: "eye-level", label: "平视视线", icon: Eye, desc: "与模特视线齐平，亲切、真实且自然" },
+  { id: "full", label: "全景视角", icon: Maximize2, desc: "展示全身搭配及环境", promptDesc: "Full body wide shot, showing the entire outfit and the surrounding environment." },
+  { id: "medium", label: "中景视角", icon: LayoutGrid, desc: "膝盖以上的半身构图", promptDesc: "Medium shot from the knees up, focusing on the upper body and outfit details." },
+  { id: "side", label: "侧向视角", icon: ArrowUpRight, desc: "增加画面深度和时尚感", promptDesc: "Side profile shot, capturing the model from a 90-degree angle to emphasize the silhouette." },
+  { id: "high", label: "高角度俯拍", icon: ArrowDownLeft, desc: "具有艺术感和空间感的视角", promptDesc: "High angle shot, looking slightly down at the model, creating an artistic and dynamic perspective." },
+  { id: "back", label: "背面视角", icon: UserCheck, desc: "展示服装背面设计细节", promptDesc: "Back view shot, showing the model from behind to highlight the back details of the outfit." },
+  { id: "eye-level", label: "平视视线", icon: Eye, desc: "与模特视线齐平，亲切、真实且自然", promptDesc: "Eye-level shot, camera is at the same height as the model's face, creating a direct and engaging connection." },
 ];
 
 const PLACEMENT_OPTIONS = [
@@ -309,18 +309,21 @@ function CharacterPanel({ onGenerate, isExpanded }: { onGenerate: (prompts: stri
     let basePrompt = `A vibrant, high-energy street photography shot.
 Subject: A ${formData.ageValue}-year-old ${formData.ethnicity} ${formData.gender} model with a natural, expressive look.
 Task: 
-1. Virtual Try-On: The model MUST wear the exact clothing item shown in the clothing reference image. If the item is a full-body piece (like a dress), do NOT add any additional pants or jeans.
+1. Virtual Try-On: The model MUST wear the exact clothing item shown in the clothing reference image. CRITICAL: Completely IGNORE whatever clothing the person is wearing in the model reference image. Their original outfit must be entirely replaced by the uploaded clothing reference. If the item is a full-body piece (like a dress), do NOT add any additional pants or jeans.
 ${lowerBodyImage ? '2. Virtual Try-On (Lower Body): The model MUST wear the exact lower-body clothing item shown in the lower-body clothing reference image. Do not substitute it with jeans or any other item.' : '2. Outfit Completion: If the clothing reference is only an upper-body item, automatically design a matching lower-body item. CRITICAL: Maintain strict consistency for this lower-body item across all images in this set. If you choose a specific style (e.g., a black skirt), use that exact same style for all generated images.'}
 3. Model Consistency: The model's face and body type should match the model reference image, but with a more relaxed, candid vibe.
 4. Environment: Place the model in a vibrant urban environment or the exact setting shown in the background reference image. The lighting should be natural, as if captured during a walk in the city.
 5. Style: Street snap style, candid moment, natural sunlight, urban aesthetic, vivid colors, eye-catching composition.
-6. Consistency & Safety: Ensure the model\'s outfit is perfectly consistent across all images. No unexpected items like jeans should appear if they are not part of the original design. Adhere strictly to safety guidelines; the content must be professional and high-end.`;
+6. Consistency & Safety: Ensure the model\'s outfit is perfectly consistent across all images and strictly matches the uploaded clothing reference. No unexpected items should appear. Adhere strictly to safety guidelines: the content MUST be professional, elegant, and high-end. Absolutely no inappropriate, suggestive, or offensive content.`;
 
     for (let i = 0; i < formData.count; i++) {
       const setting = formData.imageSettings[i];
+      const poseOption = POSE_OPTIONS.find(p => p.id === setting.poseId) || POSE_OPTIONS[0];
+      const angleOption = ANGLE_OPTIONS.find(a => a.id === setting.angleId) || ANGLE_OPTIONS[0];
+      
       prompts.push(basePrompt + `
-Camera Angle: ${setting.cameraAngle} view, candid street photography style.
-Pose & Expression: ${setting.pose}. The model should look natural and spontaneous, as if they are genuinely enjoying their time in the city.
+Camera Angle: ${angleOption.promptDesc}
+Pose & Expression: ${poseOption.promptDesc} The model should look natural and spontaneous, as if they are genuinely enjoying their time in the city.
 Placement: The model is positioned at the ${setting.placement} of the frame.
 Vibe: Spontaneous, eye-catching, natural, urban fashion.`);
     }
