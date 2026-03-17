@@ -22,6 +22,11 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.get("/api/env.js", (req, res) => {
+    res.type("application/javascript");
+    res.send(`window.process = { env: { GEMINI_API_KEY: ${JSON.stringify(process.env.GEMINI_API_KEY || '')}, API_KEY: ${JSON.stringify(process.env.API_KEY || '')} } };`);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
