@@ -84,7 +84,7 @@ export async function generateMultipleImages(
   references: { clothing?: string, lowerClothing?: string, style?: string, model?: string, logo?: string, background?: string } = {}, 
   baseSeed?: number
 ): Promise<string[]> {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API key is missing");
 
   const ai = new GoogleGenAI({ apiKey });
@@ -200,7 +200,7 @@ export async function generateHighEndPrompt(
   imageUrl: string,
   category: string
 ): Promise<string> {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API key is missing");
 
   const ai = new GoogleGenAI({ apiKey });
@@ -241,7 +241,7 @@ export async function generateHighEndPrompt(
 }
 
 export async function editImage(imageUrl: string, prompt: string, referenceImage?: string): Promise<string> {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API key is missing");
 
   const ai = new GoogleGenAI({ apiKey });
@@ -309,7 +309,7 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
 }
 
 export async function generateCopywriting(image: string | null, context: string, platform: string): Promise<string> {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API key is missing");
 
   const ai = new GoogleGenAI({ apiKey });

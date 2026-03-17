@@ -1,8 +1,14 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
-// 初始化 Gemini 客户端
-// 注意：API Key 会在用户选择后自动通过 process.env.GEMINI_API_KEY 注入
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+let ai: GoogleGenAI;
+function getAi() {
+  if (!ai) {
+    const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("API key is missing");
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+}
 
 function createErrorPlaceholder(message: string): string {
   const canvas = document.createElement('canvas');
@@ -27,7 +33,7 @@ export async function generateImageWithGemini(
   aspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9" | "1:4" | "1:8" | "4:1" | "8:1" = "1:1"
 ): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.1-flash-image-preview',
       contents: {
         parts: [{ text: prompt }],

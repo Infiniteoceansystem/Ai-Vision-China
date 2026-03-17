@@ -1,6 +1,14 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI;
+function getAi() {
+  if (!ai) {
+    const apiKey = (window as any).process?.env?.API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("API key is missing");
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+}
 
 function createErrorPlaceholder(message: string): string {
   const canvas = document.createElement('canvas');
@@ -24,7 +32,7 @@ export async function generateModelPerspective(
   prompt: string,
   modelImage: string
 ): Promise<string> {
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: 'gemini-3.1-flash-image-preview',
     contents: {
       parts: [
@@ -99,7 +107,7 @@ export async function applyVirtualTryOn(
   clothingImage: string,
   guidelines?: string
 ): Promise<string> {
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: 'gemini-3.1-flash-image-preview',
     contents: {
       parts: [
@@ -176,7 +184,7 @@ export async function applyVirtualTryOn(
 }
 
 export async function upscaleImage(imageUrl: string): Promise<string> {
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: 'gemini-3.1-flash-image-preview',
     contents: {
       parts: [
