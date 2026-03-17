@@ -19,5 +19,8 @@ COPY . .
 # Build the Vite app for production
 RUN npm run build
 
+# Ensure the server runs in production mode
+ENV NODE_ENV=production
+
 # Run the web service on container startup.
 CMD [ "npm", "start" ]

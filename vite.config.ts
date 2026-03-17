@@ -17,13 +17,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       hmr: false,
-      allowedHosts: [
-        '.zeabur.app', // 允许所有 zeabur.app 子域名
-        '.vercel.app', // 允许所有 vercel.app 子域名
-        'your-custom-domain.com', // 替换为您未来的自定义域名
-        // 如果您想允许所有域名访问（在生产环境容器中很常见），也可以直接设置为:
-        // allowedHosts: true,
-      ],
+      allowedHosts: true,
       proxy: {
         '/kling-api': {
           target: 'https://api.klingai.com',
