@@ -131,8 +131,8 @@ export async function generateMultipleImages(
     addPart(styleBase64, "Style reference: Imitate the lighting, color grading, and overall atmosphere.");
 
     const finalPrompt = imageIndex > 1 
-      ? `Generate an image based on the above references.\n\nPrompt: ${prompt}`
-      : prompt;
+      ? `Generate a high-quality, realistic street photography style image based on the references. Ensure the subject looks natural, casual, and modest (safe-for-work). Pay special attention to realistic and naturally posed hands. The overall vibe should be like a candid, everyday lifestyle photo.\n\nPrompt: ${prompt}`
+      : `Generate a high-quality, realistic street photography style image. Ensure the subject looks natural, casual, and modest (safe-for-work). Pay special attention to realistic and naturally posed hands. The overall vibe should be like a candid, everyday lifestyle photo.\n\nPrompt: ${prompt}`;
 
     parts.push({ text: finalPrompt });
 
@@ -215,7 +215,12 @@ export async function generateHighEndPrompt(
   const promptText = `请深度分析这张图片，并为 "${category}" 风格生成专业的高级 AI 视频动态提示词。
 请基于这张具体的图片，提供一段提示词（请全部使用中文输出，并且只输出一段话，不需要多复杂）：
 
-视频动态提示词 (Image-to-Video)：重点描述这张图片中的人物应该如何动起来。描述相机的运动，人物的动作（例如：头发在风中飘动、轻微的呼吸、向前走），以及环境的动态。注意：不要产生转身之类的容易有破绽的动作。
+视频动态提示词 (Image-to-Video)：重点描述这张图片中的人物应该如何动起来。描述相机的运动，人物的动作（例如：头发在风中飘动、轻微的呼吸、向前走），以及环境的动态。
+【重要安全与质量约束】：
+1. 动作必须像日常街拍一样自然、随性。
+2. 手部动作保持简单真实（如自然下垂、插兜、拿咖啡或手机等），避免复杂的手指交叉或不自然的扭曲。
+3. 内容必须是完全健康、日常的穿搭展示（SFW），风格清新得体，避免任何敏感、暴露或令人不适的暗示。
+4. 不要产生转身、大幅度跑跳等容易有破绽的动作。
 
 请严格按照以下格式输出（全部使用中文）：
 
@@ -273,7 +278,7 @@ export async function editImage(imageUrl: string, prompt: string, referenceImage
     }
   }
 
-  const finalPrompt = prompt;
+  const finalPrompt = `Edit the image based on the following instructions. Ensure the result is a high-quality, realistic street photography style image. Keep the subject looking natural, casual, and modest (safe-for-work), with realistic and naturally posed hands.\n\nInstructions: ${prompt}`;
   parts.push({ text: finalPrompt });
 
   const response = await withRetry(() => ai.models.generateContent({

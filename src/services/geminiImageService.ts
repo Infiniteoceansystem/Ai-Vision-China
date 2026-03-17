@@ -36,7 +36,7 @@ export async function generateImageWithGemini(
     const response = await getAi().models.generateContent({
       model: 'gemini-3.1-flash-image-preview',
       contents: {
-        parts: [{ text: prompt }],
+        parts: [{ text: `Generate a high-quality, realistic street photography style image. Ensure the subject looks natural, casual, and modest (safe-for-work). Pay special attention to realistic and naturally posed hands. The overall vibe should be like a candid, everyday lifestyle photo.\n\nUser Prompt: ${prompt}` }],
       },
       config: {
         imageConfig: {

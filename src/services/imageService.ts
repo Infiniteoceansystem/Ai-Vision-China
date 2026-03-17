@@ -37,7 +37,7 @@ export async function generateModelPerspective(
     contents: {
       parts: [
         {
-          text: `Based on the provided image, generate a new perspective: ${prompt}`,
+          text: `Based on the provided image, generate a new perspective: ${prompt}. Ensure the result is a realistic street photography style image. Keep the subject looking natural, casual, and modest (safe-for-work), with realistic and naturally posed hands.`,
         },
         {
           inlineData: {
@@ -112,7 +112,7 @@ export async function applyVirtualTryOn(
     contents: {
       parts: [
         {
-          text: `Apply the clothing from the second image onto the person in the first image. ${guidelines || ''}`,
+          text: `Apply the clothing from the second image onto the person in the first image. Ensure the final image is a realistic street photography style image, with modest and appropriate fitting (safe-for-work). Keep the subject looking natural and casual, paying attention to realistic and naturally posed hands. ${guidelines || ''}`,
         },
         {
           inlineData: {
